@@ -6,22 +6,25 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
+import { Eye, EyeOff } from 'lucide-react';
 import { useAuthStore } from '@/store/auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
   Card,
   CardContent,
-  CardDescription,
   CardFooter,
   CardHeader,
   CardTitle,
+  CardDescription,
 } from '@/components/ui/card';
-import { KanbanSquare } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { useState } from 'react';
 
 const schema = z.object({
-  email: z.string().email('Invalid email'),
-  password: z.string().min(1, 'Required'),
+  email: z.string().email('Enter a valid email address'),
+  password: z.string().min(6, 'Password must be at least 6 characters'),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -29,6 +32,7 @@ type FormValues = z.infer<typeof schema>;
 export default function LoginPage() {
   const router = useRouter();
   const login = useAuthStore((s) => s.login);
+  const [showPw, setShowPw] = useState(false);
   const {
     register,
     handleSubmit,
@@ -47,42 +51,95 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-muted/30 px-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <Link href="/" className="mx-auto mb-2 flex items-center gap-2 font-semibold">
-            <KanbanSquare className="h-5 w-5 text-primary" />
-            <span>JobTrack</span>
+    <main className="min-h-screen relative overflow-hidden flex items-center justify-center px-4 py-10">
+      <div className="bg-glow" />
+      <div className="bg-grid" />
+
+      <Card className="relative z-10 w-full max-w-[360px] border-border bg-surface shadow-lg-dark">
+        <CardHeader className="items-center text-center pb-6">
+          <Link href="/" className="flex items-center gap-2 mb-6 font-bold">
+            <div className="h-[22px] w-[22px] rounded-md bg-accent" />
+            <span className="text-[15px] font-bold">JobTrack</span>
           </Link>
-          <CardTitle>Welcome back</CardTitle>
-          <CardDescription>Sign in to your account</CardDescription>
+          <CardTitle className="text-[21px] font-bold">Welcome back</CardTitle>
+          <CardDescription className="text-[13.5px] text-text-secondary">
+            Sign in to pick up your search where you left it.
+          </CardDescription>
         </CardHeader>
+
         <form onSubmit={handleSubmit(onSubmit)}>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Email</label>
-              <Input type="email" placeholder="you@example.com" {...register('email')} />
-              {errors.email && <p className="text-xs text-destructive">{errors.email.message}</p>}
+          <CardContent className="space-y-4 pt-0">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="email">Email</Label>
+              <Input
+                id="email"
+                type="email"
+                placeholder="you@email.com"
+                {...register('email')}
+                className={cn(errors.email && 'border-danger')}
+              />
+              {errors.email && (
+                <span className="text-[12px] text-danger">{errors.email.message}</span>
+              )}
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Password</label>
-              <Input type="password" placeholder="••••••••" {...register('password')} />
-              {errors.password && <p className="text-xs text-destructive">{errors.password.message}</p>}
+
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="password">Password</Label>
+              <div className="relative">
+                <Input
+                  id="password"
+                  type={showPw ? 'text' : 'password'}
+                  placeholder="••••••••"
+                  {...register('password')}
+                  className={cn(errors.password && 'border-danger', 'pr-9')}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPw(!showPw)}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-tertiary hover:text-text-primary"
+                  aria-label={showPw ? 'Hide password' : 'Show password'}
+                >
+                  {showPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+              {errors.password && (
+                <span className="text-[12px] text-danger">{errors.password.message}</span>
+              )}
+            </div>
+
+            <div className="flex items-center justify-between pt-1">
+              <label className="inline-flex items-center gap-2 text-[13px] text-text-secondary cursor-pointer">
+                <input type="checkbox" className="h-[15px] w-[15px] accent-accent" />
+                Remember me
+              </label>
+              <button
+                type="button"
+                className="text-[13px] font-semibold text-accent hover:underline bg-transparent p-0"
+                onClick={() => toast.info('Password reset is coming soon.')}
+              >
+                Forgot password?
+              </button>
             </div>
           </CardContent>
-          <CardFooter className="flex flex-col gap-3">
-            <Button type="submit" className="w-full" disabled={isSubmitting}>
+
+          <CardFooter className="flex flex-col gap-3 pt-2">
+            <Button
+              type="submit"
+              className="w-full"
+              size="lg"
+              disabled={isSubmitting}
+            >
               {isSubmitting ? 'Signing in…' : 'Sign in'}
             </Button>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-[13px] text-text-secondary text-center pt-2 border-t border-border w-full mt-2">
               Don&apos;t have an account?{' '}
-              <Link href="/register" className="text-primary hover:underline">
-                Create one
+              <Link href="/register" className="text-accent font-semibold hover:underline">
+                Sign up for free
               </Link>
             </p>
           </CardFooter>
         </form>
       </Card>
-    </div>
+    </main>
   );
 }

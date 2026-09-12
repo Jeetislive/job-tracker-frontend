@@ -13,11 +13,22 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" suppressHydrationWarning>
-      <body className={inter.className}>
+    <html lang="en" className="dark">
+      <body className={`${inter.className} min-h-screen bg-bg text-text-primary`}>
         <Providers>
           {children}
-          <Toaster richColors position="top-right" />
+          <Toaster
+            theme="dark"
+            position="bottom-right"
+            toastOptions={{
+              style: {
+                background: '#1C212A',
+                border: '1px solid #343B47',
+                color: '#F2F4F8',
+                fontSize: '13px',
+              },
+            }}
+          />
         </Providers>
       </body>
     </html>
