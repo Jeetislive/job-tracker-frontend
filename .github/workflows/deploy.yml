@@ -1,9 +1,17 @@
 name: Deploy Frontend
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        type: choice
+        default: 'production'
+        options:
+          - production
+          - staging
+          - vercel-preview
 
 env:
   REGISTRY: ghcr.io
@@ -11,7 +19,10 @@ env:
 
 jobs:
   build-and-deploy:
+    name: Build & Deploy
     runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || 'production' }}
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -48,11 +59,13 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          push: true
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          push: ${{ github.event.inputs.environment != 'vercel-preview' }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
 
       - name: Deploy to EC2
-        if: github.event_name == 'push'
+        if: github.event.inputs.environment != 'vercel-preview'
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.EC2_HOST }}
@@ -61,7 +74,16 @@ jobs:
           script: |
             cd ~/job-tracker-frontend
             git pull origin main
-            docker pull ghcr.io/${{ env.IMAGE_NAME }}:latest || true
-            docker compose pull client || true
-            docker compose up -d --build client
+            docker compose pull client
+            docker compose up -d client
             docker system prune -f
+
+      - name: Deploy to Vercel
+        if: github.event.inputs.environment == 'vercel-preview'
+        uses: amondnet/vercel-action@v25
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          vercel-args: '--prod'
+          working-directory: .

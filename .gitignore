@@ -2,6 +2,11 @@
 node_modules/
 .pnp
 .pnp.js
+.yarn/cache
+.yarn/install-state.gz
+.yarn/build-state.yml
+.yarn/unplugged
+.pnpm-store/
 
 # Build outputs
 .next/
@@ -9,11 +14,21 @@ out/
 build/
 dist/
 *.tsbuildinfo
+.swc/
+
+# Coverage & test artifacts
+coverage/
+test-results/
+playwright-report/
+junit.xml
 
 # Environment
 .env
 .env.local
 .env.*.local
+.env.development
+.env.production
+.env.test
 !.env.example
 
 # Logs
@@ -24,24 +39,50 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-# Testing
-coverage/
+# Caches
+.eslintcache
+.cache/
+.turbo/
+.parcel-cache/
+.tsbuildinfo
+.stylelintcache
 
 # IDE
 .vscode/
 .idea/
 *.swp
 *.swo
-.DS_Store
-Thumbs.db
+*.swn
+.history/
+*~
+.cursor/
 
 # Next.js
 next-env.d.ts
 .vercel
+next.config.js.bak
 
 # Docker
 .docker/
 *.pid
+docker-compose.override.yml
+
+# Secrets / keys
+*.pem
+*.key
+*.p12
+*.pfx
+secrets/
 
 # OS
+.DS_Store
+Thumbs.db
 desktop.ini
+
+# Temp
+tmp/
+temp/
+.cache/
+
+# Public uploads
+public/uploads/
