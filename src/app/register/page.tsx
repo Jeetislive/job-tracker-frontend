@@ -7,7 +7,9 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
+import { MailCheck } from 'lucide-react';
 import { useAuthStore } from '@/store/auth';
+import { useResendVerification } from '@/hooks/use-resend-verification';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -52,6 +54,8 @@ export default function RegisterPage() {
   const isHydrated = useAuthStore((s) => s.isHydrated);
   const [terms, setTerms] = useState(false);
   const [termsError, setTermsError] = useState(false);
+  const [pendingEmail, setPendingEmail] = useState('');
+  const { resend, countdown, isPending } = useResendVerification();
   const {
     register,
     handleSubmit,
@@ -64,8 +68,8 @@ export default function RegisterPage() {
     hydrate();
   }, [hydrate]);
   useEffect(() => {
-    if (isHydrated && user) router.replace('/dashboard');
-  }, [isHydrated, user, router]);
+    if (isHydrated && user && !pendingEmail) router.replace('/dashboard');
+  }, [isHydrated, user, pendingEmail, router]);
 
   const pw = watch('password') ?? '';
   const score = passwordStrength(pw);
@@ -79,8 +83,7 @@ export default function RegisterPage() {
     setTermsError(false);
     try {
       await registerUser(data.email, data.password, data.name);
-      toast.success('Account created!');
-      router.push('/dashboard');
+      setPendingEmail(data.email);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Registration failed';
       toast.error(msg);
@@ -107,13 +110,79 @@ export default function RegisterPage() {
             <div className="h-[22px] w-[22px] rounded-md bg-accent" />
             <span className="text-[15px] font-bold">JobTrack</span>
           </Link>
-          <CardTitle className="text-[21px] font-bold">Create your account</CardTitle>
-          <CardDescription className="text-[13.5px] text-text-secondary">
-            Free while you&apos;re job hunting. No card required.
-          </CardDescription>
+          {pendingEmail ? (
+            <>
+              <CardTitle className="text-[21px] font-bold">Verify your email</CardTitle>
+              <CardDescription className="text-[13.5px] text-text-secondary">
+                We sent a link to <span className="text-text-primary font-medium">{pendingEmail}</span>.
+                Click it to activate your account.
+              </CardDescription>
+            </>
+          ) : (
+            <>
+              <CardTitle className="text-[21px] font-bold">Create your account</CardTitle>
+              <CardDescription className="text-[13.5px] text-text-secondary">
+                Free while you&apos;re job hunting. No card required.
+              </CardDescription>
+            </>
+          )}
         </CardHeader>
 
-        <form onSubmit={handleSubmit(onSubmit)}>
+        {pendingEmail ? (
+          <>
+            <CardContent className="pt-0 flex flex-col items-center text-center gap-4">
+              <div className="h-12 w-12 rounded-full bg-accent-tint flex items-center justify-center">
+                <MailCheck className="h-6 w-6 text-accent" />
+              </div>
+              <p className="text-[13px] text-text-secondary">
+                You can start using JobTrack right away — but please confirm your email to keep
+                your account safe.
+              </p>
+            </CardContent>
+            <CardFooter className="flex flex-col gap-3 pt-2">
+              <Button
+                asChild
+                variant="secondary"
+                className="w-full"
+                size="lg"
+              >
+                <a href={`mailto:${pendingEmail}?subject=JobTrack%20email%20verification`}>
+                  Open email client
+                </a>
+              </Button>
+              <Button
+                type="button"
+                variant="default"
+                className="w-full"
+                size="lg"
+                disabled={isPending || countdown > 0}
+                onClick={() => resend(pendingEmail)}
+              >
+                {countdown > 0
+                  ? `Resend email (${countdown}s)`
+                  : isPending
+                    ? 'Sending…'
+                    : 'Resend email'}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                className="w-full"
+                size="lg"
+                onClick={() => router.push('/dashboard')}
+              >
+                Continue to dashboard →
+              </Button>
+              <p className="text-[13px] text-text-secondary text-center pt-2 border-t border-border w-full mt-2">
+                Already have an account?{' '}
+                <Link href="/login" className="text-accent font-semibold hover:underline">
+                  Sign in
+                </Link>
+              </p>
+            </CardFooter>
+          </>
+        ) : (
+          <form onSubmit={handleSubmit(onSubmit)}>
           <CardContent className="space-y-3.5 pt-0">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="name">Full name</Label>
@@ -215,7 +284,8 @@ export default function RegisterPage() {
               </Link>
             </p>
           </CardFooter>
-        </form>
+          </form>
+        )}
       </Card>
     </main>
   );

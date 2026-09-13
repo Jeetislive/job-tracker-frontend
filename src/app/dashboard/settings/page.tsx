@@ -55,6 +55,13 @@ export default function SettingsPage() {
           </button>
           <button
             type="button"
+            onClick={() => router.push('/dashboard/settings/integrations')}
+            className="text-left px-3 py-2 rounded-sm text-[13.5px] font-medium text-text-secondary hover:bg-surface-sunken hover:text-text-primary"
+          >
+            Integrations
+          </button>
+          <button
+            type="button"
             onClick={() => setSection('danger')}
             className={`text-left px-3 py-2 rounded-sm text-[13.5px] font-medium ${
               section === 'danger'

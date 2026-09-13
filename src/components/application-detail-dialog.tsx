@@ -27,6 +27,7 @@ import {
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
 import { APPLICATION_STATUSES, ApplicationStatus, STATUS_LABELS } from '@/types';
+import { SourceBadge } from '@/components/source-badge';
 
 interface Props {
   applicationId: string;
@@ -211,6 +212,7 @@ export function ApplicationDetailDialog({
               <Badge variant={STATUS_BADGE[app.status]} size="sm">
                 {STATUS_LABELS[app.status]}
               </Badge>
+              {app.source && app.source !== 'manual' && <SourceBadge source={app.source} />}
               {app.archived && (
                 <Badge variant="outline" size="sm">
                   Archived

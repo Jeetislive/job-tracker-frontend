@@ -12,12 +12,16 @@ import {
   ApplicationFilters,
   ApplicationSort,
   ApplicationStatus,
+  InboxItem,
   Paginated,
   SortOrder,
   Stats,
 } from '@/types';
 
 const APPLICATIONS_KEY = ['applications'] as const;
+
+export const INBOX_KEY = ['applications', 'inbox'] as const;
+const INBOX_REJECTED_KEY = ['applications', 'inbox', 'rejected'] as const;
 
 export function useApplications(filters: ApplicationFilters = {}) {
   return useQuery({
@@ -226,3 +230,72 @@ export function useDeleteDocument(applicationId: string) {
 
 // Re-export sort types so callers don't need a second import
 export type { ApplicationSort, SortOrder };
+
+// ---------------------------------------------------------------------------
+// Phase 3 — Review Inbox + imports
+// ---------------------------------------------------------------------------
+
+export function useInbox(opts?: { refetchInterval?: number }) {
+  return useQuery({
+    queryKey: INBOX_KEY,
+    queryFn: async () => {
+      const { data } = await api.get<{ items: InboxItem[] }>('/applications/inbox');
+      return data.items;
+    },
+    refetchInterval: opts?.refetchInterval,
+  });
+}
+
+export function useRejectedImports() {
+  return useQuery({
+    queryKey: INBOX_REJECTED_KEY,
+    queryFn: async () => {
+      const { data } = await api.get<{ items: InboxItem[] }>('/applications/inbox', {
+        params: { status: 'rejected' },
+      });
+      return data.items;
+    },
+  });
+}
+
+function invalidateImportQueries(qc: ReturnType<typeof useQueryClient>) {
+  qc.invalidateQueries({ queryKey: APPLICATIONS_KEY });
+  qc.invalidateQueries({ queryKey: INBOX_KEY });
+  qc.invalidateQueries({ queryKey: INBOX_REJECTED_KEY });
+  qc.invalidateQueries({ queryKey: ['stats'] });
+}
+
+export function useConfirmImport() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.post(`/applications/${id}/confirm`),
+    onSuccess: () => invalidateImportQueries(qc),
+  });
+}
+
+export function useRejectImport() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.post(`/applications/${id}/reject`),
+    onSuccess: () => invalidateImportQueries(qc),
+  });
+}
+
+export function useUnrejectImport() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.post(`/applications/${id}/unreject`),
+    onSuccess: () => invalidateImportQueries(qc),
+  });
+}
+
+/** Bulk confirm/reject for the Inbox page. Loops the per-item endpoint with Promise.all. */
+export function useBulkImportAction(action: 'confirm' | 'reject') {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (ids: string[]) => {
+      await Promise.all(ids.map((id) => api.post(`/applications/${id}/${action}`)));
+      invalidateImportQueries(qc);
+    },
+  });
+}

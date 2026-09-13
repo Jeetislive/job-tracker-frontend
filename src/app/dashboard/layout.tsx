@@ -1,15 +1,26 @@
 'use client';
 
-import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { Mail, X } from 'lucide-react';
+import { useEffect, useRef } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
+import { toast } from 'sonner';
 import { useAuthStore } from '@/store/auth';
+import { useInbox } from '@/hooks/use-applications';
+import { VerifyEmailBanner } from '@/components/verify-email-banner';
+import { sourceMeta } from '@/types';
+
+const NOTIFY_COOLDOWN_MS = 30_000;
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
+  const pathname = usePathname();
   const user = useAuthStore((s) => s.user);
   const hydrate = useAuthStore((s) => s.hydrate);
   const isHydrated = useAuthStore((s) => s.isHydrated);
+
+  // Lightweight 60s poll (shared across dashboard routes) that toasts on new imports.
+  const { data: inboxItems } = useInbox({ refetchInterval: 60_000 });
+  const previousCount = useRef(0);
+  const lastNotifiedAt = useRef(0);
 
   useEffect(() => {
     hydrate();
@@ -18,6 +29,33 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   useEffect(() => {
     if (isHydrated && !user) router.push('/login');
   }, [isHydrated, user, router]);
+
+  useEffect(() => {
+    if (!isHydrated || !user) return;
+    const count = inboxItems?.length ?? 0;
+    const now = Date.now();
+    if (
+      count > 0 &&
+      count > previousCount.current &&
+      previousCount.current > 0 &&
+      now - lastNotifiedAt.current >= NOTIFY_COOLDOWN_MS &&
+      pathname !== '/dashboard/inbox'
+    ) {
+      const newest = inboxItems?.[0];
+      if (newest) {
+        lastNotifiedAt.current = now;
+        toast('📥 New import', {
+          description: `${newest.title} @ ${newest.company} · ${sourceMeta(newest.source).label}`,
+          duration: 8000,
+          action: {
+            label: 'Review →',
+            onClick: () => router.push('/dashboard/inbox'),
+          },
+        });
+      }
+    }
+    previousCount.current = count;
+  }, [inboxItems, isHydrated, user, pathname, router]);
 
   if (!isHydrated || !user) {
     return (
@@ -31,24 +69,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <>
-      {showBanner && (
-        <div className="bg-stage-interview/15 border-b border-stage-interview/40 px-8 py-2.5 flex items-center justify-between gap-3 text-[12.5px]">
-          <div className="flex items-center gap-2 text-text-primary">
-            <Mail className="h-3.5 w-3.5 text-stage-interview" />
-            <span>
-              Verify your email — check your inbox for a confirmation link.{' '}
-              {/* TODO(BE): POST /api/auth/resend-verification { email } */}
-            </span>
-          </div>
-          <button
-            type="button"
-            className="text-text-tertiary hover:text-text-primary"
-            aria-label="Dismiss"
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
-        </div>
-      )}
+      {showBanner && <VerifyEmailBanner />}
       {children}
     </>
   );

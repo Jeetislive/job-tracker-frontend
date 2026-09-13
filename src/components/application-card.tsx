@@ -5,8 +5,9 @@ import { useDraggable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import { MapPin, DollarSign, Bell, Paperclip, Archive, ArchiveRestore, MoreHorizontal } from 'lucide-react';
 import { Application } from '@/types';
-import { formatCurrency, formatDate, cn } from '@/lib/utils';
+import { formatCurrency, formatDate, timeAgo, cn } from '@/lib/utils';
 import { ApplicationDetailDialog } from './application-detail-dialog';
+import { SourceBadge } from './source-badge';
 
 interface Props {
   application: Application;
@@ -101,6 +102,14 @@ export function ApplicationCard({
               <Archive className="h-2.5 w-2.5" />
               Archived
             </span>
+          </div>
+        )}
+        {application.source && application.source !== 'manual' && (
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <SourceBadge source={application.source} />
+            {application.importedAt && (
+              <span className="text-[11px] text-text-tertiary">{timeAgo(application.importedAt)}</span>
+            )}
           </div>
         )}
         <div className="flex justify-between items-start gap-2">

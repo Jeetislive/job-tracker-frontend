@@ -54,6 +54,10 @@ export default function LoginPage() {
   const onSubmit = async (data: FormValues) => {
     try {
       await login(data.email, data.password);
+      const signedIn = useAuthStore.getState().user;
+      if (signedIn?.emailVerified === false) {
+        toast.info('Please verify your email — check your inbox for the confirmation link.');
+      }
       toast.success('Welcome back!');
       router.push('/dashboard');
     } catch (err: unknown) {

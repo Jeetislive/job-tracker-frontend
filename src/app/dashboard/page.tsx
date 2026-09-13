@@ -12,6 +12,7 @@ import {
   List as ListIcon,
   Download,
   Settings as SettingsIcon,
+  Inbox as InboxIcon,
   Sun,
   Moon,
   X,
@@ -28,6 +29,7 @@ import {
   useBulkStatus,
   useDeleteApplication,
   useInfiniteApplications,
+  useInbox,
   useUpdateStatus,
 } from '@/hooks/use-applications';
 import { Button } from '@/components/ui/button';
@@ -48,12 +50,25 @@ import {
   ApplicationStatus,
   SortOrder,
   STATUS_LABELS,
+  sourceMeta,
 } from '@/types';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import { SourceBadge } from '@/components/source-badge';
 
 type StatusFilter = ApplicationStatus | 'all';
 type SortKey = 'updatedAt-desc' | 'createdAt-desc' | 'followUpDate-asc' | 'company-asc';
+
+const SOURCE_OPTIONS: string[] = [
+  'manual',
+  'telegram',
+  'email',
+  'email:naukri',
+  'email:foundit',
+  'email:linkedin',
+  'email:indeed',
+  'email:instahyre',
+];
 
 const SORT_OPTIONS: Array<{ key: SortKey; label: string; sort: ApplicationSort; order: SortOrder }> = [
   { key: 'updatedAt-desc', label: 'Updated (newest)', sort: 'updatedAt', order: 'desc' },
@@ -79,6 +94,7 @@ export default function DashboardPage() {
   const [showArchived, setShowArchived] = useState(false);
   const [archivedOnly, setArchivedOnly] = useState(false);
   const [tagsInput, setTagsInput] = useState('');
+  const [sourceFilter, setSourceFilter] = useState<string[]>([]);
   const [appliedFrom, setAppliedFrom] = useState('');
   const [appliedTo, setAppliedTo] = useState('');
   const [salaryMin, setSalaryMin] = useState('');
@@ -108,6 +124,7 @@ export default function DashboardPage() {
       sort: selectedSort.sort,
       order: selectedSort.order,
       tags: tagsFilter.length > 0 ? tagsFilter : undefined,
+      source: sourceFilter.length > 0 ? sourceFilter.join(',') : undefined,
       appliedFrom: appliedFrom ? `${appliedFrom}T00:00:00Z` : undefined,
       appliedTo: appliedTo ? `${appliedTo}T23:59:59Z` : undefined,
       salaryMin: salaryMin ? Number(salaryMin) : undefined,
@@ -120,6 +137,7 @@ export default function DashboardPage() {
       statusFilter,
       selectedSort,
       tagsFilter,
+      sourceFilter,
       appliedFrom,
       appliedTo,
       salaryMin,
@@ -132,6 +150,9 @@ export default function DashboardPage() {
   const { data, isLoading, refetch } = useApplications(filters);
   const apps: Application[] = data?.items ?? [];
   const totalApps = data?.total ?? 0;
+
+  const { data: inboxItems } = useInbox();
+  const inboxCount = inboxItems?.length ?? 0;
 
   const deleteMutation = useDeleteApplication();
   const archiveMutation = useArchiveApplication();
@@ -265,6 +286,7 @@ export default function DashboardPage() {
     setShowArchived(false);
     setArchivedOnly(false);
     setTagsInput('');
+    setSourceFilter([]);
     setAppliedFrom('');
     setAppliedTo('');
     setSalaryMin('');
@@ -278,6 +300,7 @@ export default function DashboardPage() {
     showArchived ||
     archivedOnly ||
     tagsInput ||
+    sourceFilter.length > 0 ||
     appliedFrom ||
     appliedTo ||
     salaryMin ||
@@ -344,6 +367,18 @@ export default function DashboardPage() {
               Add application
             </Button>
             <ExportMenu onExport={handleExport} />
+            <Link
+              href="/dashboard/inbox"
+              className="relative inline-flex h-8 w-8 items-center justify-center rounded-sm text-text-tertiary hover:bg-surface-sunken hover:text-text-primary transition-colors"
+              aria-label={`Review inbox (${inboxCount} pending)`}
+            >
+              <InboxIcon className="h-4 w-4" />
+              {inboxCount > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 h-4 min-w-[16px] px-1 rounded-full bg-danger text-[10px] font-bold text-[#FFF] flex items-center justify-center">
+                  {inboxCount > 99 ? '99+' : inboxCount}
+                </span>
+              )}
+            </Link>
             <button
               type="button"
               onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
@@ -433,6 +468,16 @@ export default function DashboardPage() {
               className="bg-transparent text-[12.5px] text-text-primary placeholder:text-text-tertiary focus:outline-none w-[140px]"
             />
           </div>
+
+          <SourceFilterMenu
+            selected={sourceFilter}
+            onToggle={(value) =>
+              setSourceFilter((prev) =>
+                prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value],
+              )
+            }
+            onClear={() => setSourceFilter([])}
+          />
 
           <Select value={sortKey} onValueChange={(v) => setSortKey(v as SortKey)}>
             <SelectTrigger className="h-7 w-auto px-2.5 text-[13px] font-medium bg-surface">
@@ -626,6 +671,70 @@ function EmptyState({
   );
 }
 
+function SourceFilterMenu({
+  selected,
+  onToggle,
+  onClear,
+}: {
+  selected: string[];
+  onToggle: (value: string) => void;
+  onClear: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className={`inline-flex items-center gap-1.5 text-[13px] font-medium bg-surface border border-border-strong rounded-sm px-2.5 h-7 hover:bg-surface-sunken ${
+          selected.length > 0 ? 'text-accent' : 'text-text-secondary'
+        }`}
+      >
+        Source
+        {selected.length > 0 && (
+          <span className="inline-flex h-4 min-w-[16px] px-1 items-center justify-center rounded-full bg-accent text-[10px] font-bold text-accent-fg">
+            {selected.length}
+          </span>
+        )}
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
+          <div className="absolute z-40 left-0 top-full mt-1 min-w-[180px] bg-surface border border-border rounded-md shadow-md-dark p-1.5">
+            {SOURCE_OPTIONS.map((value) => {
+              const meta = sourceMeta(value);
+              return (
+                <label
+                  key={value}
+                  className="flex items-center gap-2.5 w-full px-2 py-1.5 rounded-sm text-[13px] cursor-pointer hover:bg-surface-sunken"
+                >
+                  <input
+                    type="checkbox"
+                    className="h-[14px] w-[14px] accent-accent"
+                    checked={selected.includes(value)}
+                    onChange={() => onToggle(value)}
+                  />
+                  <span className={meta.color}>{meta.icon}</span>
+                  {meta.label}
+                </label>
+              );
+            })}
+            {selected.length > 0 && (
+              <button
+                type="button"
+                onClick={onClear}
+                className="w-full mt-1 px-2 py-1.5 rounded-sm text-[12.5px] text-text-tertiary hover:bg-surface-sunken hover:text-text-primary text-left"
+              >
+                Clear source filter
+              </button>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function ListView({ filters }: { filters: Parameters<typeof useInfiniteApplications>[0] }) {
   const { data, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } =
     useInfiniteApplications(filters);
@@ -657,6 +766,7 @@ function ListView({ filters }: { filters: Parameters<typeof useInfiniteApplicati
             <tr className="text-left border-b border-border">
               <th className="px-3.5 py-2.5 text-meta text-text-tertiary font-normal">Company</th>
               <th className="px-3.5 py-2.5 text-meta text-text-tertiary font-normal">Title</th>
+              <th className="px-3.5 py-2.5 text-meta text-text-tertiary font-normal">Source</th>
               <th className="px-3.5 py-2.5 text-meta text-text-tertiary font-normal">Status</th>
               <th className="px-3.5 py-2.5 text-meta text-text-tertiary font-normal">Location</th>
               <th className="px-3.5 py-2.5 text-meta text-text-tertiary font-normal">Follow-up</th>
@@ -674,6 +784,9 @@ function ListView({ filters }: { filters: Parameters<typeof useInfiniteApplicati
               >
                 <td className="px-3.5 py-2.5 font-semibold">{a.company}</td>
                 <td className="px-3.5 py-2.5 text-text-secondary">{a.title}</td>
+                <td className="px-3.5 py-2.5">
+                  <SourceBadge source={a.source} />
+                </td>
                 <td className="px-3.5 py-2.5 text-text-secondary">
                   {STATUS_LABELS[a.status]}
                   {a.archived && (

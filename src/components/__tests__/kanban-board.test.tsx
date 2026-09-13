@@ -1,8 +1,17 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { KanbanBoard } from '@/components/kanban-board';
 import { Application, ApplicationStatus } from '@/types';
+
+vi.mock('@/lib/api', () => ({
+  api: {
+    get: vi.fn(),
+    post: vi.fn(),
+    patch: vi.fn(),
+    delete: vi.fn(),
+  },
+}));
 
 function makeApp(overrides: Partial<Application> = {}): Application {
   return {
