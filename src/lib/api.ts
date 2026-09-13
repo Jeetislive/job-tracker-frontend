@@ -16,51 +16,75 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-let isRefreshing = false;
-let refreshQueue: Array<(token: string) => void> = [];
+// Promise-style refresh queue — single-flight per tab, all waiters receive the rotated tokens.
+type Resolver = (token: string, refreshToken: string) => void;
+
+let pendingRefresh: Promise<void> | null = null;
+let waiters: Resolver[] = [];
+
+function refreshTokens(refreshToken: string): Promise<void> {
+  if (pendingRefresh) return pendingRefresh;
+
+  pendingRefresh = axios
+    .post<{ accessToken: string; refreshToken: string }>(`${baseURL}/api/auth/refresh`, {
+      refreshToken,
+    })
+    .then(({ data }) => {
+      // Persist the rotated tokens BEFORE resolving waiters so any retried
+      // requests pick up the fresh pair.
+      localStorage.setItem('accessToken', data.accessToken);
+      localStorage.setItem('refreshToken', data.refreshToken);
+
+      waiters.forEach((resolve) => resolve(data.accessToken, data.refreshToken));
+      waiters = [];
+    })
+    .catch((err) => {
+      // Reject all waiters
+      waiters.forEach((resolve) => resolve('', ''));
+      waiters = [];
+      throw err;
+    })
+    .finally(() => {
+      pendingRefresh = null;
+    });
+
+  return pendingRefresh;
+}
 
 api.interceptors.response.use(
   (res) => res,
   async (error: AxiosError) => {
-    const original = error.config as any;
-    if (error.response?.status === 401 && !original?._retry) {
-      original._retry = true;
-
-      if (isRefreshing) {
-        return new Promise((resolve) => {
-          refreshQueue.push((token) => {
-            original.headers.Authorization = `Bearer ${token}`;
-            resolve(api(original));
-          });
-        });
-      }
-
-      isRefreshing = true;
-      try {
-        const refreshToken = localStorage.getItem('refreshToken');
-        if (!refreshToken) throw new Error('No refresh token');
-
-        const { data } = await axios.post(`${baseURL}/api/auth/refresh`, { refreshToken });
-        localStorage.setItem('accessToken', data.accessToken);
-        localStorage.setItem('refreshToken', data.refreshToken);
-
-        refreshQueue.forEach((cb) => cb(data.accessToken));
-        refreshQueue = [];
-
-        original.headers.Authorization = `Bearer ${data.accessToken}`;
-        return api(original);
-      } catch (err) {
-        localStorage.removeItem('accessToken');
-        localStorage.removeItem('refreshToken');
-        localStorage.removeItem('user');
-        if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
-          window.location.href = '/login';
-        }
-        return Promise.reject(err);
-      } finally {
-        isRefreshing = false;
-      }
+    const original = error.config as (typeof error.config & { _retry?: boolean }) | undefined;
+    if (error.response?.status !== 401 || !original || original._retry) {
+      return Promise.reject(error);
     }
-    return Promise.reject(error);
+    original._retry = true;
+
+    const refreshToken = localStorage.getItem('refreshToken');
+    if (!refreshToken) {
+      clearAuthAndRedirect();
+      return Promise.reject(error);
+    }
+
+    try {
+      await refreshTokens(refreshToken);
+      const newAccess = localStorage.getItem('accessToken');
+      if (!newAccess) throw new Error('Refresh produced no token');
+      original.headers = original.headers ?? {};
+      (original.headers as Record<string, string>).Authorization = `Bearer ${newAccess}`;
+      return api(original);
+    } catch {
+      clearAuthAndRedirect();
+      return Promise.reject(error);
+    }
   },
 );
+
+function clearAuthAndRedirect() {
+  localStorage.removeItem('accessToken');
+  localStorage.removeItem('refreshToken');
+  localStorage.removeItem('user');
+  if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+    window.location.href = '/login';
+  }
+}

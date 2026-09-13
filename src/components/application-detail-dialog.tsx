@@ -1,12 +1,14 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import { useApplication } from '@/hooks/use-applications';
+import { useApplication, useCreateNote, useDeleteDocument, useDeleteNote, useUpdateNote, useUploadDocument } from '@/hooks/use-applications';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
+import { Textarea } from '@/components/ui/textarea';
 import { formatCurrency, formatDate } from '@/lib/utils';
+import { useConfirm } from '@/hooks/use-confirm';
 import {
   X,
   Pencil,
@@ -20,6 +22,7 @@ import {
   ChevronDown,
   Trash2,
   Download,
+  Check,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
@@ -41,6 +44,15 @@ const STATUS_BADGE: Record<ApplicationStatus, 'saved' | 'applied' | 'interview' 
   REJECTED: 'rejected',
 };
 
+const MAX_DOC_BYTES = 10 * 1024 * 1024;
+const ALLOWED_MIME = [
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'image/png',
+  'image/jpeg',
+];
+
 export function ApplicationDetailDialog({
   applicationId,
   open,
@@ -49,36 +61,66 @@ export function ApplicationDetailDialog({
   onEdit,
 }: Props) {
   const { data: app, refetch } = useApplication(applicationId);
-  const [newNote, setNewNote] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [moveOpen, setMoveOpen] = useState(false);
+  const confirm = useConfirm();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [newNote, setNewNote] = useState('');
+  const [dragOver, setDragOver] = useState(false);
+  const [moveOpen, setMoveOpen] = useState(false);
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  const [editingNoteContent, setEditingNoteContent] = useState('');
+
+  const createNote = useCreateNote(applicationId);
+  const updateNote = useUpdateNote(applicationId);
+  const deleteNote = useDeleteNote(applicationId);
+  const uploadDoc = useUploadDocument(applicationId);
+  const deleteDoc = useDeleteDocument(applicationId);
 
   if (!app) return null;
 
   const addNote = async () => {
-    if (!newNote.trim()) return;
-    setSubmitting(true);
+    const text = newNote.trim();
+    if (!text) return;
     try {
-      await api.post(`/applications/${applicationId}/notes`, { content: newNote });
+      await createNote.mutateAsync(text);
       setNewNote('');
       refetch();
-      onUpdated?.();
       toast.success('Note added');
     } catch {
       toast.error('Failed to add note');
-    } finally {
-      setSubmitting(false);
     }
   };
 
-  const deleteNote = async (noteId: string) => {
-    if (!confirm('Delete this note?')) return;
+  const startEditNote = (noteId: string, content: string) => {
+    setEditingNoteId(noteId);
+    setEditingNoteContent(content);
+  };
+
+  const saveEditedNote = async () => {
+    if (!editingNoteId) return;
+    const text = editingNoteContent.trim();
+    if (!text) return;
     try {
-      await api.delete(`/applications/${applicationId}/notes/${noteId}`);
+      await updateNote.mutateAsync({ noteId: editingNoteId, content: text });
+      setEditingNoteId(null);
+      setEditingNoteContent('');
       refetch();
-      onUpdated?.();
+      toast.success('Note updated');
+    } catch {
+      toast.error('Failed to update note');
+    }
+  };
+
+  const handleDeleteNote = async (noteId: string) => {
+    const ok = await confirm({
+      title: 'Delete note?',
+      description: 'This cannot be undone.',
+      confirmText: 'Delete',
+      destructive: true,
+    });
+    if (!ok) return;
+    try {
+      await deleteNote.mutateAsync(noteId);
+      refetch();
       toast.success('Note deleted');
     } catch {
       toast.error('Failed to delete note');
@@ -97,21 +139,27 @@ export function ApplicationDetailDialog({
     }
   };
 
-  const uploadDocument = async (file: File) => {
-    setUploading(true);
+  const validateFile = (file: File): string | null => {
+    if (file.size > MAX_DOC_BYTES) return `${file.name} is larger than 10 MB`;
+    if (!ALLOWED_MIME.includes(file.type)) return `${file.name} has unsupported type (${file.type || 'unknown'})`;
+    return null;
+  };
+
+  const handleFileUpload = async (file: File) => {
+    const err = validateFile(file);
+    if (err) {
+      toast.error(err);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
     try {
-      const fd = new FormData();
-      fd.append('file', file);
-      await api.post(`/applications/${applicationId}/documents`, fd, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
+      await uploadDoc.mutateAsync(file);
       refetch();
-      onUpdated?.();
       toast.success(`Uploaded ${file.name}`);
-    } catch {
-      toast.error('Failed to upload document');
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Failed to upload document';
+      toast.error(msg);
     } finally {
-      setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
@@ -127,12 +175,17 @@ export function ApplicationDetailDialog({
     }
   };
 
-  const deleteDocument = async (docId: string, filename: string) => {
-    if (!confirm(`Delete ${filename}?`)) return;
+  const handleDeleteDoc = async (docId: string, filename: string) => {
+    const ok = await confirm({
+      title: `Delete ${filename}?`,
+      description: 'This will remove the file from this application.',
+      confirmText: 'Delete',
+      destructive: true,
+    });
+    if (!ok) return;
     try {
-      await api.delete(`/documents/${docId}`);
+      await deleteDoc.mutateAsync(docId);
       refetch();
-      onUpdated?.();
       toast.success('Document deleted');
     } catch {
       toast.error('Failed to delete document');
@@ -154,14 +207,32 @@ export function ApplicationDetailDialog({
           <div className="min-w-0">
             <h2 className="text-[17px] font-bold leading-tight truncate">{app.company}</h2>
             <p className="text-[14px] text-text-secondary mt-0.5 truncate">{app.title}</p>
-            <div className="flex items-center gap-2.5 mt-2.5">
+            <div className="flex items-center gap-2.5 mt-2.5 flex-wrap">
               <Badge variant={STATUS_BADGE[app.status]} size="sm">
                 {STATUS_LABELS[app.status]}
               </Badge>
+              {app.archived && (
+                <Badge variant="outline" size="sm">
+                  Archived
+                </Badge>
+              )}
               <span className="text-meta text-text-tertiary">
                 Added {formatDate(app.createdAt)}
               </span>
             </div>
+            {/* Tags row (BUG-2) */}
+            {app.tags && app.tags.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mt-2.5">
+                {app.tags.map((t) => (
+                  <span
+                    key={t}
+                    className="inline-flex items-center text-[11.5px] font-medium px-1.5 py-0.5 rounded-sm bg-surface-sunken text-text-secondary border border-border"
+                  >
+                    {t}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
           <div className="flex gap-1.5 shrink-0">
             {onEdit && (
@@ -200,10 +271,7 @@ export function ApplicationDetailDialog({
             </button>
             {moveOpen && (
               <>
-                <div
-                  className="fixed inset-0 z-40"
-                  onClick={() => setMoveOpen(false)}
-                />
+                <div className="fixed inset-0 z-40" onClick={() => setMoveOpen(false)} />
                 <div className="absolute z-50 top-full mt-1 left-0 min-w-[190px] bg-surface border border-border rounded-md shadow-md-dark p-1.5">
                   {APPLICATION_STATUSES.filter((s) => s !== app.status).map((s) => (
                     <button
@@ -241,18 +309,19 @@ export function ApplicationDetailDialog({
             variant="secondary"
             size="sm"
             onClick={() => fileInputRef.current?.click()}
-            disabled={uploading}
+            disabled={uploadDoc.isPending}
           >
             <Upload className="h-3.5 w-3.5" />
-            {uploading ? 'Uploading…' : 'Upload document'}
+            {uploadDoc.isPending ? 'Uploading…' : 'Upload document'}
           </Button>
           <input
             ref={fileInputRef}
             type="file"
             hidden
+            accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"
             onChange={(e) => {
               const file = e.target.files?.[0];
-              if (file) uploadDocument(file);
+              if (file) handleFileUpload(file);
             }}
           />
         </div>
@@ -327,42 +396,88 @@ export function ApplicationDetailDialog({
                   No notes yet.
                 </div>
               )}
-              {app.notes.map((note) => (
-                <div
-                  key={note.id}
-                  className="group rounded-md border border-border bg-surface p-3"
-                >
-                  <div className="flex justify-between items-start gap-2">
-                    <p className="text-[13px] text-text-primary whitespace-pre-wrap leading-relaxed flex-1">
-                      {note.content}
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => deleteNote(note.id)}
-                      className="opacity-0 group-hover:opacity-100 inline-flex h-6 w-6 items-center justify-center rounded text-text-tertiary hover:text-danger transition-all shrink-0"
-                      aria-label="Delete note"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
+              {app.notes.map((note) => {
+                const isEditing = editingNoteId === note.id;
+                return (
+                  <div key={note.id} className="group rounded-md border border-border bg-surface p-3">
+                    {isEditing ? (
+                      <div className="flex flex-col gap-2">
+                        <Textarea
+                          value={editingNoteContent}
+                          onChange={(e) => setEditingNoteContent(e.target.value)}
+                          className="min-h-[60px]"
+                        />
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => {
+                              setEditingNoteId(null);
+                              setEditingNoteContent('');
+                            }}
+                          >
+                            Cancel
+                          </Button>
+                          <Button
+                            size="sm"
+                            onClick={saveEditedNote}
+                            disabled={updateNote.isPending || !editingNoteContent.trim()}
+                          >
+                            <Check className="h-3.5 w-3.5" />
+                            Save
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex justify-between items-start gap-2">
+                          <p className="text-[13px] text-text-primary whitespace-pre-wrap leading-relaxed flex-1">
+                            {note.content}
+                          </p>
+                          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => startEditNote(note.id, note.content)}
+                              className="inline-flex h-6 w-6 items-center justify-center rounded text-text-tertiary hover:text-text-primary"
+                              aria-label="Edit note"
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteNote(note.id)}
+                              className="inline-flex h-6 w-6 items-center justify-center rounded text-text-tertiary hover:text-danger"
+                              aria-label="Delete note"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                        <div className="flex justify-between mt-2 text-[12px] text-text-tertiary">
+                          <span>{note.user.name || note.user.email}</span>
+                          <span>{formatDate(note.createdAt)}</span>
+                        </div>
+                      </>
+                    )}
                   </div>
-                  <div className="flex justify-between mt-2 text-[12px] text-text-tertiary">
-                    <span>{note.user.name || note.user.email}</span>
-                    <span>{formatDate(note.createdAt)}</span>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
               <div className="flex gap-2 items-end mt-4">
-                <textarea
+                <Textarea
                   id="add-note-input"
                   value={newNote}
                   onChange={(e) => setNewNote(e.target.value)}
                   placeholder="Add a note…"
-                  className="flex-1 min-h-[44px] rounded-sm border border-border-strong bg-surface-sunken px-2.5 py-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:outline-none focus:border-accent focus:shadow-[0_0_0_3px_var(--accent-ring)] resize-y"
+                  className="min-h-[44px] flex-1"
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) addNote();
                   }}
                 />
-                <Button onClick={addNote} disabled={submitting || !newNote.trim()} size="sm">
+                <Button
+                  onClick={addNote}
+                  disabled={createNote.isPending || !newNote.trim()}
+                  size="sm"
+                >
                   Add
                 </Button>
               </div>
@@ -397,12 +512,37 @@ export function ApplicationDetailDialog({
             </TabsContent>
 
             <TabsContent value="documents">
+              <div
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setDragOver(true);
+                }}
+                onDragLeave={() => setDragOver(false)}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setDragOver(false);
+                  const file = e.dataTransfer.files?.[0];
+                  if (file) handleFileUpload(file);
+                }}
+                onClick={() => fileInputRef.current?.click()}
+                className={`flex items-center justify-center gap-2 border border-dashed rounded-md py-5 cursor-pointer transition-colors ${
+                  dragOver
+                    ? 'border-accent bg-accent-tint'
+                    : 'border-border-strong hover:border-accent hover:bg-surface-sunken'
+                }`}
+              >
+                <Upload className="h-4 w-4 text-text-tertiary" />
+                <span className="text-[13px] text-text-secondary">
+                  Drop a file or click to upload (PDF, DOC, DOCX, PNG, JPEG — max 10 MB)
+                </span>
+              </div>
+
               {app.documents.length === 0 ? (
                 <div className="text-center py-6 text-text-tertiary text-[13px]">
                   No documents uploaded yet.
                 </div>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 mt-3">
                   {app.documents.map((doc) => (
                     <div
                       key={doc.id}
@@ -417,13 +557,17 @@ export function ApplicationDetailDialog({
                         <Paperclip className="h-4 w-4" />
                       </button>
                       <div className="min-w-0 flex-1">
-                        <p
-                          className="text-[13px] font-semibold truncate cursor-pointer hover:text-accent"
+                        <button
+                          type="button"
                           onClick={() => downloadDocument(doc.id)}
+                          className="text-[13px] font-semibold truncate text-left hover:text-accent w-full"
                         >
                           {doc.filename}
-                        </p>
-                        <p className="text-[11.5px] text-text-tertiary mt-0.5">
+                        </button>
+                        <p
+                          className="text-[11.5px] text-text-tertiary mt-0.5 truncate"
+                          title={`${doc.mimeType}`}
+                        >
                           {(doc.fileSize / 1024).toFixed(1)} KB · {formatDate(doc.createdAt)}
                         </p>
                       </div>
@@ -438,7 +582,7 @@ export function ApplicationDetailDialog({
                         </button>
                         <button
                           type="button"
-                          onClick={() => deleteDocument(doc.id, doc.filename)}
+                          onClick={() => handleDeleteDoc(doc.id, doc.filename)}
                           className="inline-flex h-6 w-6 items-center justify-center rounded text-text-tertiary hover:text-danger"
                           aria-label="Delete"
                         >
@@ -449,16 +593,6 @@ export function ApplicationDetailDialog({
                   ))}
                 </div>
               )}
-              <Button
-                variant="secondary"
-                size="sm"
-                className="mt-3.5"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={uploading}
-              >
-                <Upload className="h-3.5 w-3.5" />
-                {uploading ? 'Uploading…' : 'Upload document'}
-              </Button>
             </TabsContent>
           </Tabs>
         </div>

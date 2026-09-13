@@ -1,12 +1,12 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
-import { useState } from 'react';
 import { useAuthStore } from '@/store/auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -47,6 +47,9 @@ function passwordStrength(v: string): number {
 export default function RegisterPage() {
   const router = useRouter();
   const registerUser = useAuthStore((s) => s.register);
+  const user = useAuthStore((s) => s.user);
+  const hydrate = useAuthStore((s) => s.hydrate);
+  const isHydrated = useAuthStore((s) => s.isHydrated);
   const [terms, setTerms] = useState(false);
   const [termsError, setTermsError] = useState(false);
   const {
@@ -55,6 +58,14 @@ export default function RegisterPage() {
     watch,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({ resolver: zodResolver(schema) });
+
+  // Bounce signed-in users away from /register
+  useEffect(() => {
+    hydrate();
+  }, [hydrate]);
+  useEffect(() => {
+    if (isHydrated && user) router.replace('/dashboard');
+  }, [isHydrated, user, router]);
 
   const pw = watch('password') ?? '';
   const score = passwordStrength(pw);

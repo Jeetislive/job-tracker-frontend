@@ -2,6 +2,7 @@
 
 import { useStats } from '@/hooks/use-applications';
 import { ApplicationStatus, STATUS_LABELS } from '@/types';
+import { Skeleton } from '@/components/ui/skeleton';
 
 const STAGE_HEX: Record<ApplicationStatus, string> = {
   SAVED: '#9AA3AE',
@@ -11,10 +12,31 @@ const STAGE_HEX: Record<ApplicationStatus, string> = {
   REJECTED: '#F0676C',
 };
 
-export function StatsBar() {
-  const { data } = useStats();
+const PLACEHOLDER = [
+  'total',
+  'SAVED',
+  'APPLIED',
+  'INTERVIEW',
+  'OFFER',
+  'REJECTED',
+  'followup',
+] as const;
 
-  if (!data) return null;
+export function StatsBar() {
+  const { data, isLoading } = useStats();
+
+  if (isLoading || !data) {
+    return (
+      <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-2">
+        {PLACEHOLDER.map((key) => (
+          <div key={key} className="rounded-md border border-border bg-surface px-3 py-2.5">
+            <Skeleton className="h-3 w-16 mb-1.5" />
+            <Skeleton className="h-5 w-10" />
+          </div>
+        ))}
+      </div>
+    );
+  }
 
   const items: Array<{ key: string; label: string; value: number; color?: string }> = [
     { key: 'total', label: 'Total', value: data.total },

@@ -11,7 +11,12 @@ import {
   useSensors,
   closestCenter,
 } from '@dnd-kit/core';
-import { Application, APPLICATION_STATUSES, ApplicationStatus, STATUS_LABELS } from '@/types';
+import {
+  Application,
+  APPLICATION_STATUSES,
+  ApplicationStatus,
+  STATUS_LABELS,
+} from '@/types';
 import { KanbanColumn } from './kanban-column';
 import { ApplicationCard } from './application-card';
 
@@ -20,7 +25,12 @@ interface Props {
   onStatusChange: (id: string, status: ApplicationStatus) => Promise<void> | void;
   onDelete: (id: string) => Promise<void> | void;
   onAdd?: (status: ApplicationStatus) => void;
+  onEdit?: (app: Application) => void;
+  onArchive?: (id: string, archive: boolean) => void;
+  onSelectToggle?: (id: string) => void;
+  selectedIds?: Set<string>;
   onUpdated: () => void;
+  search?: string;
 }
 
 const STAGE_COLORS: Record<ApplicationStatus, string> = {
@@ -36,17 +46,21 @@ export function KanbanBoard({
   onStatusChange,
   onDelete,
   onAdd,
+  onEdit,
+  onArchive,
+  onSelectToggle,
+  selectedIds,
   onUpdated,
+  search,
 }: Props) {
   const [activeId, setActiveId] = useState<string | null>(null);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
   const grouped = useMemo(() => {
-    const map = Object.fromEntries(APPLICATION_STATUSES.map((s) => [s, [] as Application[]])) as Record<
-      ApplicationStatus,
-      Application[]
-    >;
+    const map = Object.fromEntries(
+      APPLICATION_STATUSES.map((s) => [s, [] as Application[]]),
+    ) as Record<ApplicationStatus, Application[]>;
     for (const app of applications) map[app.status].push(app);
     return map;
   }, [applications]);
@@ -94,6 +108,11 @@ export function KanbanBoard({
                 application={app}
                 onDelete={onDelete}
                 onUpdated={onUpdated}
+                onEdit={onEdit}
+                onArchive={onArchive}
+                onSelectToggle={onSelectToggle}
+                selected={selectedIds?.has(app.id)}
+                search={search}
               />
             ))}
             {grouped[status].length === 0 && (
@@ -108,7 +127,7 @@ export function KanbanBoard({
       <DragOverlay>
         {activeApp && (
           <div className="rotate-[-1deg] scale-[1.02]">
-            <ApplicationCard application={activeApp} dragging />
+            <ApplicationCard application={activeApp} dragging search={search} selected={selectedIds?.has(activeApp.id)} />
           </div>
         )}
       </DragOverlay>

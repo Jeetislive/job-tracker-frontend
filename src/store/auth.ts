@@ -5,6 +5,7 @@ export interface User {
   id: string;
   email: string;
   name: string | null;
+  emailVerified?: boolean;
 }
 
 interface AuthState {
@@ -14,6 +15,8 @@ interface AuthState {
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, name?: string) => Promise<void>;
   logout: () => Promise<void>;
+  clear: () => void;
+  setUser: (user: User | null) => void;
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
@@ -25,7 +28,9 @@ export const useAuthStore = create<AuthState>((set) => ({
     const stored = localStorage.getItem('user');
     if (stored) {
       try {
-        set({ user: JSON.parse(stored) });
+        const parsed = JSON.parse(stored) as User;
+        // Older stored users may not have emailVerified — treat as verified to avoid nagging
+        set({ user: { emailVerified: true, ...parsed } });
       } catch {
         // ignore
       }
@@ -60,5 +65,18 @@ export const useAuthStore = create<AuthState>((set) => ({
     localStorage.removeItem('refreshToken');
     localStorage.removeItem('user');
     set({ user: null });
+  },
+
+  clear: () => {
+    localStorage.removeItem('accessToken');
+    localStorage.removeItem('refreshToken');
+    localStorage.removeItem('user');
+    set({ user: null });
+  },
+
+  setUser: (user) => {
+    if (user) localStorage.setItem('user', JSON.stringify(user));
+    else localStorage.removeItem('user');
+    set({ user });
   },
 }));

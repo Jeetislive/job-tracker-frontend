@@ -17,12 +17,15 @@ export const STATUS_LABELS: Record<ApplicationStatus, string> = {
 };
 
 export const STATUS_COLORS: Record<ApplicationStatus, string> = {
-  SAVED: 'bg-slate-500',
-  APPLIED: 'bg-blue-500',
-  INTERVIEW: 'bg-amber-500',
-  OFFER: 'bg-emerald-500',
-  REJECTED: 'bg-rose-500',
+  SAVED: '#9AA3AE',
+  APPLIED: '#5B9BF8',
+  INTERVIEW: '#F5B23D',
+  OFFER: '#3FBF97',
+  REJECTED: '#F0676C',
 };
+
+export type ApplicationSort = 'createdAt' | 'updatedAt' | 'followUpDate' | 'company';
+export type SortOrder = 'asc' | 'desc';
 
 export interface Application {
   id: string;
@@ -30,15 +33,19 @@ export interface Application {
   title: string;
   url?: string | null;
   status: ApplicationStatus;
+  location?: string | null;
   salaryMin?: number | null;
   salaryMax?: number | null;
-  location?: string | null;
+  currency?: string | null;
   description?: string | null;
   followUpDate?: string | null;
+  appliedDate?: string | null;
   tags: string[];
+  source?: string | null;
+  priority?: number | null;
+  archived?: boolean;
   createdAt: string;
   updatedAt: string;
-  notes?: Array<{ id: string; content: string; createdAt: string }>;
   _count?: { notes: number; documents: number };
 }
 
@@ -69,4 +76,29 @@ export interface Stats {
   total: number;
   byStatus: Record<ApplicationStatus, number>;
   upcomingFollowUps: number;
+}
+
+export interface Paginated<T> {
+  items: T[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export interface ApplicationFilters {
+  search?: string;
+  status?: ApplicationStatus | 'all';
+  tags?: string[];
+  page?: number;
+  limit?: number;
+  sort?: ApplicationSort;
+  order?: SortOrder;
+  appliedFrom?: string;
+  appliedTo?: string;
+  followUpFrom?: string;
+  followUpTo?: string;
+  salaryMin?: number;
+  salaryMax?: number;
+  archived?: boolean;
+  includeArchived?: boolean;
 }
